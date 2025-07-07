@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare } from 'lucide-react';
+import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare, Clock, Flag } from 'lucide-react';
 
 const DailyTimeBox = () => {
   const [date, setDate] = useState('');
@@ -10,6 +10,14 @@ const DailyTimeBox = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [lastSaved, setLastSaved] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showTaskPopup, setShowTaskPopup] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: '',
+    time: '',
+    priority: 0 // 0: no priority, 1,2,3: priority levels
+  });
   const componentRef = useRef();
   const scheduleRef = useRef();
   const prioritiesRef = useRef();
@@ -17,11 +25,68 @@ const DailyTimeBox = () => {
   const notesRef = useRef();
   const scheduleScrollRef = useRef();
   const autoScrollTimeoutRef = useRef();
+  const saveTimeoutRef = useRef();
 
-  // Initialize date on client side
+  // Auto-save function
+  const autoSave = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      setIsSaving(true);
+      const dataToSave = {
+        date,
+        priorities,
+        todos,
+        notes,
+        schedule,
+        isDarkMode,
+        lastSaved: new Date().toISOString()
+      };
+      
+      // Save to memory (simulating API call)
+      setTimeout(() => {
+        console.log('Auto-saved data:', dataToSave);
+        setLastSaved(new Date());
+        setIsSaving(false);
+      }, 200);
+    }, 500); // Save after 500ms of inactivity
+  };
+
+  // Load saved data on client initialization
   useEffect(() => {
     setDate(new Date().toISOString().split('T')[0]);
     setIsClient(true);
+    
+    // Simulate loading saved data
+    // In a real app, this would fetch from localStorage or API
+    // const savedData = localStorage.getItem('dailyTimeBox');
+    // if (savedData) {
+    //   const parsed = JSON.parse(savedData);
+    //   setDate(parsed.date || new Date().toISOString().split('T')[0]);
+    //   setPriorities(parsed.priorities || ['', '', '']);
+    //   setTodos(parsed.todos || [{ id: 1, text: '', completed: false }]);
+    //   setNotes(parsed.notes || '');
+    //   setSchedule(parsed.schedule || {});
+    //   setIsDarkMode(parsed.isDarkMode || false);
+    // }
+  }, []);
+
+  // Auto-save when data changes
+  useEffect(() => {
+    if (isClient) {
+      autoSave();
+    }
+  }, [date, priorities, todos, notes, schedule, isDarkMode, isClient]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Update current time every minute
@@ -66,17 +131,20 @@ const DailyTimeBox = () => {
       if (autoScrollTimeoutRef.current) {
         clearTimeout(autoScrollTimeoutRef.current);
       }
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
   }, []);
 
   // Time slots from 5 AM to 1 AM next day
-  const timeSlots = [];
+  const scheduleTimeSlots = [];
   for (let hour = 5; hour <= 23; hour++) {
-    timeSlots.push(`${hour}:00`);
+    scheduleTimeSlots.push(`${hour}:00`);
   }
   // Add midnight and 1 AM
-  timeSlots.push('0:00'); // midnight
-  timeSlots.push('1:00'); // 1 AM
+  scheduleTimeSlots.push('0:00'); // midnight
+  scheduleTimeSlots.push('1:00'); // 1 AM
 
   // Calculate current time position
   const getCurrentTimePosition = () => {
@@ -112,7 +180,7 @@ const DailyTimeBox = () => {
     if (!currentTimePosition || !scheduleScrollRef.current) return;
 
     const scrollContainer = scheduleScrollRef.current;
-    const timeSlotHeight = 48; // Approximate height of each time slot
+    const timeSlotHeight = 60; // Reduced height for 2-row layout
     const headerHeight = 40; // Height of the table header
     
     // Calculate scroll position to center current time in view
@@ -181,6 +249,56 @@ const DailyTimeBox = () => {
     }
   };
 
+  // Add new task from popup
+  const addTaskFromPopup = () => {
+    if (!newTask.title.trim()) return;
+
+    // Add to Brain Dump
+    const newTodo = {
+      id: Date.now(),
+      text: newTask.title,
+      completed: false
+    };
+    setTodos([...todos, newTodo]);
+
+    // Add to Schedule if time is selected
+    if (newTask.time) {
+      const timeKey = `${newTask.time}-${Math.floor(Math.random() * 1000)}-00`;
+      setSchedule(prev => ({
+        ...prev,
+        [timeKey]: newTask.title
+      }));
+    }
+
+    // Add to Priorities if priority is selected
+    if (newTask.priority > 0 && newTask.priority <= 3) {
+      const newPriorities = [...priorities];
+      const priorityIndex = newTask.priority - 1;
+      if (!newPriorities[priorityIndex]) {
+        newPriorities[priorityIndex] = newTask.title;
+      } else {
+        // If priority slot is taken, find next available slot
+        for (let i = 0; i < 3; i++) {
+          if (!newPriorities[i]) {
+            newPriorities[i] = newTask.title;
+            break;
+          }
+        }
+      }
+      setPriorities(newPriorities);
+    }
+
+    // Reset form and close popup
+    setNewTask({ title: '', time: '', priority: 0 });
+    setShowTaskPopup(false);
+  };
+
+  // Reset task form
+  const resetTaskForm = () => {
+    setNewTask({ title: '', time: '', priority: 0 });
+    setShowTaskPopup(false);
+  };
+
   // Update schedule
   const updateSchedule = (time, period, value) => {
     const key = `${time}-${period}`;
@@ -219,6 +337,22 @@ const DailyTimeBox = () => {
     { icon: CheckSquare, label: 'Tasks', ref: brainDumpRef, color: 'bg-green-500' },
     { icon: StickyNote, label: 'Notes', ref: notesRef, color: 'bg-orange-500' }
   ];
+
+  // Generate time slots for popup
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let hour = 5; hour <= 23; hour++) {
+      slots.push(`${hour}:00`);
+      slots.push(`${hour}:30`);
+    }
+    slots.push('0:00');
+    slots.push('0:30');
+    slots.push('1:00');
+    slots.push('1:30');
+    return slots;
+  };
+
+  const timeSlots = generateTimeSlots();
 
   const currentTimePosition = getCurrentTimePosition();
 
@@ -268,7 +402,23 @@ const DailyTimeBox = () => {
         {/* Date Input */}
         <div className={`${themeClasses.sectionBg} rounded-2xl p-4 border ${themeClasses.border} shadow-lg`}>
           <div className="flex items-center justify-between">
-            <h2 className={`text-lg font-bold ${themeClasses.text}`}>Today</h2>
+            <div className="flex items-center gap-3">
+              <h2 className={`text-lg font-bold ${themeClasses.text}`}>Today</h2>
+              {/* Auto-save Status */}
+              <div className="flex items-center gap-2 text-xs">
+                {isSaving ? (
+                  <div className="flex items-center gap-1 text-blue-500">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <span>Saving...</span>
+                  </div>
+                ) : lastSaved ? (
+                  <div className="flex items-center gap-1 text-green-500">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Saved {lastSaved.toLocaleTimeString()}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
             <input
               type="date"
               value={date}
@@ -290,20 +440,19 @@ const DailyTimeBox = () => {
           {/* Schedule Grid */}
           <div className="overflow-hidden">
             {/* Header */}
-            <div className={`grid ${themeClasses.headerBg} border-b-2 ${themeClasses.border}`} style={{gridTemplateColumns: '60px 1fr 1fr'}}>
+            <div className={`grid ${themeClasses.headerBg} border-b-2 ${themeClasses.border}`} style={{gridTemplateColumns: '60px 1fr'}}>
               <div className={`p-2 font-bold text-center border-r ${themeClasses.border} ${themeClasses.text} text-sm`}>Time</div>
-              <div className={`p-2 font-bold text-center border-r ${themeClasses.border} ${themeClasses.text} text-sm`}>:00</div>
-              <div className={`p-2 font-bold text-center ${themeClasses.text} text-sm`}>:30</div>
+              <div className={`p-2 font-bold text-center ${themeClasses.text} text-sm`}>Schedule</div>
             </div>
 
             {/* Time Slots */}
             <div className="max-h-80 overflow-y-auto relative" ref={scheduleScrollRef}>
-              {timeSlots.map((time, index) => (
-                <div key={`${time}-${index}`} className={`grid border-b ${themeClasses.border} last:border-b-0 hover:bg-purple-50 dark:hover:bg-gray-700 transition-all relative`} style={{gridTemplateColumns: '60px 1fr 1fr'}}>
-                  <div className={`p-2 font-bold text-center border-r ${themeClasses.border} flex items-center justify-center ${themeClasses.headerBg} ${themeClasses.text} text-sm`}>
+              {scheduleTimeSlots.map((time, index) => (
+                <div key={`${time}-${index}`} className={`grid border-b ${themeClasses.border} last:border-b-0 hover:bg-purple-50 dark:hover:bg-gray-700 transition-all relative`} style={{gridTemplateColumns: '60px 1fr', gridTemplateRows: '30px 30px'}}>
+                  <div className={`row-span-2 p-1 font-bold text-center border-r ${themeClasses.border} flex items-center justify-center ${themeClasses.headerBg} ${themeClasses.text} text-sm`}>
                     {time}
                   </div>
-                  <div className={`p-2 border-r ${themeClasses.border}`}>
+                  <div className="p-1 relative">
                     <input
                       type="text"
                       value={schedule[`${time}-${index}-00`] || ''}
@@ -311,8 +460,10 @@ const DailyTimeBox = () => {
                       className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
                       placeholder=""
                     />
+                    {/* 중간 구분선 */}
+                    <div className={`absolute bottom-0 left-0 right-0 h-px ${themeClasses.border} bg-gray-300 dark:bg-gray-600`}></div>
                   </div>
-                  <div className="p-2">
+                  <div className="p-1">
                     <input
                       type="text"
                       value={schedule[`${time}-${index}-30`] || ''}
@@ -325,14 +476,15 @@ const DailyTimeBox = () => {
                   {/* Current Time Indicator */}
                   {currentTimePosition && currentTimePosition.slotIndex === index && (
                     <div 
-                      className="absolute left-0 right-0 h-0.5 bg-red-500 z-10 shadow-lg"
+                      className="absolute left-0 right-0 h-px bg-red-500 z-10 pointer-events-none"
                       style={{
                         top: `${currentTimePosition.position * 100}%`,
-                        boxShadow: '0 0 4px rgba(239, 68, 68, 0.8)'
+                        backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                        boxShadow: '0 0 2px rgba(239, 68, 68, 0.5)'
                       }}
                     >
-                      <div className="absolute -left-1 -top-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                      <div className="absolute -right-1 -top-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                      <div className="absolute -left-0.5 -top-0.5 w-1 h-1 bg-red-500 rounded-full opacity-80"></div>
+                      <div className="absolute -right-0.5 -top-0.5 w-1 h-1 bg-red-500 rounded-full opacity-80"></div>
                     </div>
                   )}
                 </div>
@@ -430,21 +582,111 @@ const DailyTimeBox = () => {
         </div>
       </div>
 
-      {/* Quick Navigation - Fixed Bottom */}
+      {/* Add New Task Section - Fixed Bottom */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-        <div className={`flex items-center gap-2 ${themeClasses.cardBg} rounded-full p-2 shadow-2xl border ${themeClasses.border}`}>
-          {quickNavItems.map((item, index) => (
-            <button
-              key={index}
-              onClick={() => scrollToSection(item.ref)}
-              className={`p-3 rounded-full ${item.color} text-white hover:scale-110 transition-all shadow-lg`}
-              title={item.label}
-            >
-              <item.icon size={16} />
-            </button>
-          ))}
+        <div className={`flex items-center gap-3 ${themeClasses.cardBg} rounded-full px-4 py-3 shadow-2xl border ${themeClasses.border}`}>
+          <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-full">
+            <Plus className="text-white" size={16} />
+          </div>
+          <button
+            onClick={() => setShowTaskPopup(true)}
+            className={`text-sm font-medium ${themeClasses.text} hover:text-purple-600 transition-all`}
+          >
+            Add New Task
+          </button>
         </div>
       </div>
+
+      {/* Task Popup */}
+      {showTaskPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className={`${themeClasses.cardBg} rounded-2xl p-6 w-full max-w-md border ${themeClasses.border} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-xl font-bold ${themeClasses.text}`}>Add New Task</h3>
+              <button
+                onClick={resetTaskForm}
+                className={`p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-all ${themeClasses.text}`}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Task Title */}
+              <div>
+                <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
+                  Task Title
+                </label>
+                <input
+                  type="text"
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                  placeholder="Enter task title..."
+                  className={`w-full p-3 rounded-lg border ${themeClasses.border} ${themeClasses.input} focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-800 outline-none transition-all`}
+                />
+              </div>
+
+              {/* Time Selection */}
+              <div>
+                <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
+                  <Clock size={16} className="inline mr-1" />
+                  Time (Optional)
+                </label>
+                <select
+                  value={newTask.time}
+                  onChange={(e) => setNewTask({...newTask, time: e.target.value})}
+                  className={`w-full p-3 rounded-lg border ${themeClasses.border} ${themeClasses.input} focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-800 outline-none transition-all`}
+                >
+                  <option value="">Select time...</option>
+                  {timeSlots.map((time) => (
+                    <option key={time} value={time}>{time}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Priority Selection */}
+              <div>
+                <label className={`block text-sm font-medium ${themeClasses.text} mb-2`}>
+                  <Flag size={16} className="inline mr-1" />
+                  Priority (Optional)
+                </label>
+                <div className="flex gap-2">
+                  {[0, 1, 2, 3].map((priority) => (
+                    <button
+                      key={priority}
+                      onClick={() => setNewTask({...newTask, priority})}
+                      className={`flex-1 p-3 rounded-lg border transition-all ${
+                        newTask.priority === priority
+                          ? 'bg-purple-500 text-white border-purple-500'
+                          : `border-gray-300 ${themeClasses.input} hover:border-purple-300`
+                      }`}
+                    >
+                      {priority === 0 ? 'None' : `Priority ${priority}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={resetTaskForm}
+                  className={`flex-1 py-3 px-4 rounded-lg border ${themeClasses.border} ${themeClasses.text} hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addTaskFromPopup}
+                  className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!newTask.title.trim()}
+                >
+                  Save Task
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
