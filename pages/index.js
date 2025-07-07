@@ -44,7 +44,7 @@ const DailyTimeBox = () => {
       // Set new timeout for auto scroll
       autoScrollTimeoutRef.current = setTimeout(() => {
         scrollToCurrentTime();
-      }, 3000); // 3 seconds of inactivity
+      }, 5000); // 5 seconds of inactivity
     };
 
     const scrollContainer = scheduleScrollRef.current;
