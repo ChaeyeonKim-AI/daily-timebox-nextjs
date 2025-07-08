@@ -1,14 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare, Clock, Flag, GripVertical, AlertTriangle } from 'lucide-react';
+import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare, Clock, Flag, GripVertical } from 'lucide-react';
 
 const DailyTimeBox = () => {
   const [date, setDate] = useState('');
-  // Changed: priorities now store ID references instead of text
-  const [priorities, setPriorities] = useState([
-    { id: null, text: '' },
-    { id: null, text: '' },
-    { id: null, text: '' }
-  ]);
+  const [priorities, setPriorities] = useState(['', '', '']);
   const [todos, setTodos] = useState([]);
   const [notes, setNotes] = useState('');
   const [schedule, setSchedule] = useState({});
@@ -21,9 +16,6 @@ const DailyTimeBox = () => {
   const [editingTask, setEditingTask] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
-  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
-  const [duplicateTitle, setDuplicateTitle] = useState('');
-  const [pendingTaskAction, setPendingTaskAction] = useState(null);
   const [newTask, setNewTask] = useState({
     title: '',
     startHour: '',
@@ -32,7 +24,7 @@ const DailyTimeBox = () => {
     endHour: '',
     endMinute: '',
     endAmPm: 'AM',
-    priority: 0,
+    priority: 0, // 0: no priority, 1,2,3: priority levels
     notes: ''
   });
   const componentRef = useRef();
@@ -43,24 +35,6 @@ const DailyTimeBox = () => {
   const scheduleScrollRef = useRef();
   const autoScrollTimeoutRef = useRef();
   const saveTimeoutRef = useRef();
-
-  // Check for duplicate titles
-  const checkDuplicateTitle = (title, excludeId = null) => {
-    if (!title.trim()) return false;
-    
-    // Check in todos
-    const duplicateInTodos = todos.some(todo => 
-      todo.text === title && todo.id !== excludeId
-    );
-    
-    // Check in priorities (excluding the one being edited)
-    const duplicateInPriorities = priorities.some((priority, index) => 
-      priority.text === title && 
-      !(editingTask && editingTask.type === 'priority' && editingTask.index === index)
-    );
-    
-    return duplicateInTodos || duplicateInPriorities;
-  };
 
   // Auto-save function
   const autoSave = () => {
@@ -80,12 +54,13 @@ const DailyTimeBox = () => {
         lastSaved: new Date().toISOString()
       };
       
+      // Save to memory (simulating API call)
       setTimeout(() => {
         console.log('Auto-saved data:', dataToSave);
         setLastSaved(new Date());
         setIsSaving(false);
       }, 200);
-    }, 500);
+    }, 500); // Save after 500ms of inactivity
   };
 
   // Load saved data on client initialization
@@ -93,9 +68,20 @@ const DailyTimeBox = () => {
     setDate(new Date().toISOString().split('T')[0]);
     setIsClient(true);
     
-    // Initialize with at least one empty todo
-    setTodos([{ id: Date.now(), text: '', completed: false }]);
-    
+    // Simulate loading saved data
+    // In a real app, this would fetch from localStorage or API
+    // const savedData = localStorage.getItem('dailyTimeBox');
+    // if (savedData) {
+    //   const parsed = JSON.parse(savedData);
+    //   setDate(parsed.date || new Date().toISOString().split('T')[0]);
+    //   setPriorities(parsed.priorities || ['', '', '']);
+    //   setTodos(parsed.todos || [{ id: 1, text: '', completed: false }]);
+    //   setNotes(parsed.notes || '');
+    //   setSchedule(parsed.schedule || {});
+    //   setIsDarkMode(parsed.isDarkMode || false);
+    // }
+
+    // Auto scroll to current time on initial load
     setTimeout(() => {
       scrollToCurrentTime();
     }, 500);
@@ -121,7 +107,7 @@ const DailyTimeBox = () => {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 60000);
+    }, 60000); // Update every minute
 
     return () => clearInterval(timer);
   }, []);
@@ -129,13 +115,15 @@ const DailyTimeBox = () => {
   // Auto scroll to current time after inactivity
   useEffect(() => {
     const handleScroll = () => {
+      // Clear existing timeout
       if (autoScrollTimeoutRef.current) {
         clearTimeout(autoScrollTimeoutRef.current);
       }
 
+      // Set new timeout for auto scroll
       autoScrollTimeoutRef.current = setTimeout(() => {
         scrollToCurrentTime();
-      }, 3000);
+      }, 3000); // 3 seconds of inactivity
     };
 
     const scrollContainer = scheduleScrollRef.current;
@@ -168,8 +156,9 @@ const DailyTimeBox = () => {
   for (let hour = 5; hour <= 23; hour++) {
     scheduleTimeSlots.push(`${hour}:00`);
   }
-  scheduleTimeSlots.push('0:00');
-  scheduleTimeSlots.push('1:00');
+  // Add midnight and 1 AM
+  scheduleTimeSlots.push('0:00'); // midnight
+  scheduleTimeSlots.push('1:00'); // 1 AM
 
   // Calculate current time position
   const getCurrentTimePosition = () => {
@@ -177,18 +166,20 @@ const DailyTimeBox = () => {
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     
+    // Find the index of current time slot
     let timeSlotIndex = -1;
     
     if (currentHour >= 5 && currentHour <= 23) {
       timeSlotIndex = currentHour - 5;
     } else if (currentHour === 0) {
-      timeSlotIndex = 19;
+      timeSlotIndex = 19; // midnight slot
     } else if (currentHour === 1) {
-      timeSlotIndex = 20;
+      timeSlotIndex = 20; // 1 AM slot
     }
     
     if (timeSlotIndex === -1) return null;
     
+    // Calculate position within the time slot (0-1)
     const positionInSlot = currentMinute / 60;
     
     return {
@@ -203,11 +194,13 @@ const DailyTimeBox = () => {
     if (!currentTimePosition || !scheduleScrollRef.current) return;
 
     const scrollContainer = scheduleScrollRef.current;
-    const timeSlotHeight = 60;
+    const timeSlotHeight = 60; // Reduced height for 2-row layout
+    const headerHeight = 40; // Height of the table header
     
+    // Calculate scroll position to center current time in view
     const targetScrollTop = (currentTimePosition.slotIndex * timeSlotHeight) + 
                            (currentTimePosition.position * timeSlotHeight) - 
-                           (scrollContainer.clientHeight / 3);
+                           (scrollContainer.clientHeight / 3); // Position at top 1/3 of container
 
     scrollContainer.scrollTo({
       top: Math.max(0, targetScrollTop),
@@ -226,19 +219,29 @@ const DailyTimeBox = () => {
   // Update priority
   const updatePriority = (index, value) => {
     const newPriorities = [...priorities];
-    const oldPriority = newPriorities[index];
+    const oldValue = newPriorities[index];
+    newPriorities[index] = value;
     
-    // Clear the priority
-    newPriorities[index] = { id: null, text: '' };
-    
-    // If new value is provided, find the todo with that text
-    if (value.trim()) {
-      const matchingTodo = todos.find(todo => todo.text === value);
-      if (matchingTodo) {
-        newPriorities[index] = { id: matchingTodo.id, text: value };
-      } else {
-        newPriorities[index] = { id: null, text: value };
-      }
+    // If we're clearing a priority or changing it, make sure Brain Dump is updated
+    if (oldValue && oldValue !== value) {
+      // Find the todo with the old priority text and update it
+      setTodos(todos.map(todo => {
+        if (todo.text === oldValue && value.trim() !== '') {
+          return { ...todo, text: value };
+        }
+        return todo;
+      }));
+      
+      // Update schedule if exists
+      const newSchedule = { ...schedule };
+      Object.keys(newSchedule).forEach(key => {
+        if (typeof newSchedule[key] === 'object' && 
+            newSchedule[key].type === 'timeblock' && 
+            newSchedule[key].title === oldValue) {
+          newSchedule[key].title = value;
+        }
+      });
+      setSchedule(newSchedule);
     }
     
     setPriorities(newPriorities);
@@ -252,8 +255,10 @@ const DailyTimeBox = () => {
       completed: false
     };
     
+    // Add new empty task at the end
     setTodos([...todos, newTodo]);
     
+    // Focus on the new todo after it's added
     setTimeout(() => {
       const newTodoInput = document.querySelector(`input[data-todo-id="${newTodo.id}"]`);
       if (newTodoInput) {
@@ -264,54 +269,66 @@ const DailyTimeBox = () => {
 
   // Update todo
   const updateTodo = (id, field, value) => {
-    setTodos(todos.map(todo => 
-      todo.id === id ? { ...todo, [field]: value } : todo
-    ));
-    
-    // Update priorities if this todo is referenced there
     if (field === 'text') {
-      const newPriorities = priorities.map(priority => {
-        if (priority.id === id) {
-          return { ...priority, text: value };
-        }
-        return priority;
-      });
-      setPriorities(newPriorities);
+      const oldTodo = todos.find(todo => todo.id === id);
+      const oldText = oldTodo?.text;
       
-      // Update schedule
-      const newSchedule = { ...schedule };
-      Object.keys(newSchedule).forEach(key => {
-        if (typeof newSchedule[key] === 'object' && 
-            newSchedule[key].type === 'timeblock' && 
-            newSchedule[key].todoId === id) {
-          newSchedule[key].title = value;
-        }
-      });
-      setSchedule(newSchedule);
+      // Update todo
+      setTodos(todos.map(todo => 
+        todo.id === id ? { ...todo, [field]: value } : todo
+      ));
+      
+      // Update priorities if the old text was in priorities
+      if (oldText && oldText !== value) {
+        const newPriorities = priorities.map(priority => 
+          priority === oldText ? value : priority
+        );
+        setPriorities(newPriorities);
+        
+        // Update schedule if exists
+        const newSchedule = { ...schedule };
+        Object.keys(newSchedule).forEach(key => {
+          if (typeof newSchedule[key] === 'object' && 
+              newSchedule[key].type === 'timeblock' && 
+              newSchedule[key].title === oldText) {
+            newSchedule[key].title = value;
+          }
+        });
+        setSchedule(newSchedule);
+      }
+    } else {
+      // For other fields like 'completed'
+      setTodos(todos.map(todo => 
+        todo.id === id ? { ...todo, [field]: value } : todo
+      ));
     }
   };
 
   // Delete todo
   const deleteTodo = (id) => {
     if (todos.length > 1) {
-      setTodos(todos.filter(todo => todo.id !== id));
-      
-      // Remove from priorities
-      const newPriorities = priorities.map(priority => 
-        priority.id === id ? { id: null, text: '' } : priority
-      );
-      setPriorities(newPriorities);
-      
-      // Remove from schedule
-      const newSchedule = { ...schedule };
-      Object.keys(newSchedule).forEach(key => {
-        if (typeof newSchedule[key] === 'object' && 
-            newSchedule[key].type === 'timeblock' && 
-            newSchedule[key].todoId === id) {
-          delete newSchedule[key];
-        }
-      });
-      setSchedule(newSchedule);
+      const todoToDelete = todos.find(todo => todo.id === id);
+      if (todoToDelete) {
+        // Remove from todos
+        setTodos(todos.filter(todo => todo.id !== id));
+        
+        // Remove from priorities if it exists there
+        const newPriorities = priorities.map(priority => 
+          priority === todoToDelete.text ? '' : priority
+        );
+        setPriorities(newPriorities);
+        
+        // Remove from schedule if it exists there
+        const newSchedule = { ...schedule };
+        Object.keys(newSchedule).forEach(key => {
+          if (typeof newSchedule[key] === 'object' && 
+              newSchedule[key].type === 'timeblock' && 
+              newSchedule[key].title === todoToDelete.text) {
+            delete newSchedule[key];
+          }
+        });
+        setSchedule(newSchedule);
+      }
     }
   };
 
@@ -343,7 +360,10 @@ const DailyTimeBox = () => {
     const newTodos = [...todos];
     const draggedTodo = newTodos[draggedItem];
     
+    // Remove dragged item
     newTodos.splice(draggedItem, 1);
+    
+    // Insert at new position
     newTodos.splice(dropIndex, 0, draggedTodo);
     
     setTodos(newTodos);
@@ -364,41 +384,10 @@ const DailyTimeBox = () => {
     }
   };
 
-  // Proceed with duplicate title
-  const proceedWithDuplicateTitle = () => {
-    setShowDuplicateWarning(false);
-    if (pendingTaskAction) {
-      pendingTaskAction();
-      setPendingTaskAction(null);
-    }
-    setDuplicateTitle('');
-  };
-
-  // Cancel duplicate warning
-  const cancelDuplicateWarning = () => {
-    setShowDuplicateWarning(false);
-    setPendingTaskAction(null);
-    setDuplicateTitle('');
-  };
-
   // Add new task from popup
   const addTaskFromPopup = () => {
     if (!newTask.title.trim()) return;
 
-    // Check for duplicate title
-    const isDuplicate = checkDuplicateTitle(newTask.title, editingTask?.id);
-    
-    if (isDuplicate && !showDuplicateWarning) {
-      setDuplicateTitle(newTask.title);
-      setShowDuplicateWarning(true);
-      setPendingTaskAction(() => () => addTaskFromPopupConfirmed());
-      return;
-    }
-
-    addTaskFromPopupConfirmed();
-  };
-
-  const addTaskFromPopupConfirmed = () => {
     // Convert 12-hour format to 24-hour format
     const convertTo24Hour = (hour, minute, ampm) => {
       let hour24 = parseInt(hour);
@@ -418,38 +407,37 @@ const DailyTimeBox = () => {
             ? { ...todo, text: newTask.title, notes: newTask.notes }
             : todo
         ));
-        
-        // Update priority reference
-        const newPriorities = [...priorities];
-        newPriorities.forEach((priority, index) => {
-          if (priority.id === editingTask.id) {
-            newPriorities[index] = { id: editingTask.id, text: newTask.title };
-          }
-        });
-        
-        // Handle new priority selection
-        if (newTask.priority > 0 && newTask.priority <= 3) {
-          newPriorities[newTask.priority - 1] = { id: editingTask.id, text: newTask.title };
-        }
-        
-        setPriorities(newPriorities);
       } else if (editingTask.type === 'priority') {
-        // Editing from priority - update the todo if it exists
-        const matchingTodo = todos.find(todo => todo.id === priorities[editingTask.index].id);
-        if (matchingTodo) {
-          setTodos(todos.map(todo => 
-            todo.id === matchingTodo.id 
-              ? { ...todo, text: newTask.title, notes: newTask.notes }
-              : todo
-          ));
+        const newPriorities = [...priorities];
+        newPriorities[editingTask.index] = newTask.title;
+        setPriorities(newPriorities);
+      }
+
+      // Update priorities if priority is selected for existing task
+      if (newTask.priority > 0 && newTask.priority <= 3) {
+        const newPriorities = [...priorities];
+        const priorityIndex = newTask.priority - 1;
+        
+        // Remove the old priority reference if it exists
+        if (editingTask.type === 'todo') {
+          const oldTaskText = editingTask.text;
+          for (let i = 0; i < newPriorities.length; i++) {
+            if (newPriorities[i] === oldTaskText) {
+              newPriorities[i] = '';
+              break;
+            }
+          }
         }
         
-        const newPriorities = [...priorities];
-        if (matchingTodo) {
-          newPriorities[editingTask.index] = { id: matchingTodo.id, text: newTask.title };
-        } else {
-          newPriorities[editingTask.index] = { id: null, text: newTask.title };
-        }
+        // Set the new priority
+        newPriorities[priorityIndex] = newTask.title;
+        setPriorities(newPriorities);
+      } else if (editingTask.type === 'todo') {
+        // If no priority is selected, remove from priorities if it was there
+        const oldTaskText = editingTask.text;
+        const newPriorities = priorities.map(priority => 
+          priority === oldTaskText ? '' : priority
+        );
         setPriorities(newPriorities);
       }
 
@@ -457,7 +445,7 @@ const DailyTimeBox = () => {
       if (newTask.startHour && newTask.startMinute && newTask.endHour && newTask.endMinute) {
         const startTime = convertTo24Hour(newTask.startHour, newTask.startMinute, newTask.startAmPm);
         const endTime = convertTo24Hour(newTask.endHour, newTask.endMinute, newTask.endAmPm);
-        const timeBlockKey = `timeblock-${editingTask.id || Date.now()}`;
+        const timeBlockKey = `timeblock-${editingTask.id}`;
         setSchedule(prev => ({
           ...prev,
           [timeBlockKey]: {
@@ -465,14 +453,14 @@ const DailyTimeBox = () => {
             startTime: startTime,
             endTime: endTime,
             type: 'timeblock',
-            notes: newTask.notes,
-            todoId: editingTask.id
+            notes: newTask.notes
           }
         }));
       }
 
     } else {
       // Add new task
+      // Add to Brain Dump (add to beginning of list, but keep the empty task at the end)
       const newTodo = {
         id: Date.now(),
         text: newTask.title,
@@ -480,6 +468,7 @@ const DailyTimeBox = () => {
         notes: newTask.notes
       };
       
+      // Filter out empty tasks and add new task at the end
       const filteredTodos = todos.filter(todo => todo.text.trim() !== '');
       setTodos([...filteredTodos, newTodo]);
 
@@ -487,7 +476,7 @@ const DailyTimeBox = () => {
       if (newTask.startHour && newTask.startMinute && newTask.endHour && newTask.endMinute) {
         const startTime = convertTo24Hour(newTask.startHour, newTask.startMinute, newTask.startAmPm);
         const endTime = convertTo24Hour(newTask.endHour, newTask.endMinute, newTask.endAmPm);
-        const timeBlockKey = `timeblock-${newTodo.id}`;
+        const timeBlockKey = `timeblock-${Date.now()}`;
         setSchedule(prev => ({
           ...prev,
           [timeBlockKey]: {
@@ -495,8 +484,7 @@ const DailyTimeBox = () => {
             startTime: startTime,
             endTime: endTime,
             type: 'timeblock',
-            notes: newTask.notes,
-            todoId: newTodo.id
+            notes: newTask.notes
           }
         }));
       }
@@ -504,7 +492,10 @@ const DailyTimeBox = () => {
       // Add to Priorities if priority is selected
       if (newTask.priority > 0 && newTask.priority <= 3) {
         const newPriorities = [...priorities];
-        newPriorities[newTask.priority - 1] = { id: newTodo.id, text: newTask.title };
+        const priorityIndex = newTask.priority - 1;
+        
+        // Clear the selected priority slot and set the new task
+        newPriorities[priorityIndex] = newTask.title;
         setPriorities(newPriorities);
       }
     }
@@ -513,9 +504,6 @@ const DailyTimeBox = () => {
     setNewTask({ title: '', startHour: '', startMinute: '', startAmPm: 'AM', endHour: '', endMinute: '', endAmPm: 'AM', priority: 0, notes: '' });
     setEditingTask(null);
     setShowTaskPopup(false);
-    setShowDuplicateWarning(false);
-    setPendingTaskAction(null);
-    setDuplicateTitle('');
   };
 
   // Reset task form
@@ -523,45 +511,25 @@ const DailyTimeBox = () => {
     setNewTask({ title: '', startHour: '', startMinute: '', startAmPm: 'AM', endHour: '', endMinute: '', endAmPm: 'AM', priority: 0, notes: '' });
     setEditingTask(null);
     setShowTaskPopup(false);
-    setShowDuplicateWarning(false);
-    setPendingTaskAction(null);
-    setDuplicateTitle('');
   };
 
   // Edit task function
   const editTask = (task, type, index = null) => {
-    let taskId, taskText, taskNotes;
+    setEditingTask({ ...task, type, index });
     
-    if (type === 'todo') {
-      taskId = task.id;
-      taskText = task.text;
-      taskNotes = task.notes;
-    } else if (type === 'priority') {
-      const priority = priorities[index];
-      taskId = priority.id;
-      taskText = priority.text;
-      // Find the todo to get notes
-      const matchingTodo = todos.find(todo => todo.id === priority.id);
-      taskNotes = matchingTodo?.notes || '';
-    }
-    
-    setEditingTask({ id: taskId, text: taskText, type, index });
-    
-    // Find existing time block
+    // Find existing time block for this task
     let existingTimeBlock = null;
     for (const [key, value] of Object.entries(schedule)) {
-      if (typeof value === 'object' && 
-          value.type === 'timeblock' && 
-          value.todoId === taskId) {
+      if (typeof value === 'object' && value.type === 'timeblock' && value.title === (task.text || task)) {
         existingTimeBlock = value;
         break;
       }
     }
 
-    // Find existing priority
+    // Find existing priority for this task
     let existingPriority = 0;
     for (let i = 0; i < priorities.length; i++) {
-      if (priorities[i].id === taskId) {
+      if (priorities[i] === (task.text || task)) {
         existingPriority = i + 1;
         break;
       }
@@ -589,7 +557,7 @@ const DailyTimeBox = () => {
     const endTime = existingTimeBlock ? convertTo12Hour(existingTimeBlock.endTime) : { hour: '', minute: '', ampm: 'AM' };
 
     setNewTask({
-      title: taskText,
+      title: task.text || task,
       startHour: startTime.hour,
       startMinute: startTime.minute,
       startAmPm: startTime.ampm,
@@ -597,7 +565,7 @@ const DailyTimeBox = () => {
       endMinute: endTime.minute,
       endAmPm: endTime.ampm,
       priority: existingPriority,
-      notes: taskNotes || existingTimeBlock?.notes || ''
+      notes: task.notes || existingTimeBlock?.notes || ''
     });
     setShowTaskPopup(true);
   };
@@ -612,11 +580,12 @@ const DailyTimeBox = () => {
     const startHour = parseTime(startTime);
     const endHour = parseTime(endTime);
     
+    // Calculate position from 5:00 AM
     let startPosition = 0;
     if (startHour >= 5) {
       startPosition = startHour - 5;
     } else if (startHour >= 0 && startHour <= 1) {
-      startPosition = 19 + startHour;
+      startPosition = 19 + startHour; // after 23:00
     }
 
     let endPosition = 0;
@@ -626,14 +595,14 @@ const DailyTimeBox = () => {
       endPosition = 19 + endHour;
     }
 
-    const slotHeight = 60;
+    const slotHeight = 60; // Each time slot is 60px
     const top = startPosition * slotHeight;
     const height = (endPosition - startPosition) * slotHeight;
 
     return {
       top: `${top}px`,
-      height: `${Math.max(height, 30)}px`,
-      left: '60px',
+      height: `${Math.max(height, 30)}px`, // Minimum height of 30px
+      left: '60px', // Start after time column
       right: '0px',
       position: 'absolute',
       zIndex: 5
@@ -679,6 +648,20 @@ const DailyTimeBox = () => {
     { icon: StickyNote, label: 'Notes', ref: notesRef, color: 'bg-orange-500' }
   ];
 
+  // Generate time slots for popup
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let hour = 5; hour <= 23; hour++) {
+      slots.push(`${hour}:00`);
+      slots.push(`${hour}:30`);
+    }
+    slots.push('0:00');
+    slots.push('0:30');
+    slots.push('1:00');
+    slots.push('1:30');
+    return slots;
+  };
+
   const generateHours = () => {
     const hours = [];
     for (let hour = 0; hour <= 23; hour++) {
@@ -689,7 +672,7 @@ const DailyTimeBox = () => {
 
   const generateMinutes = () => {
     const minutes = [];
-    for (let minute = 0; minute < 60; minute += 15) {
+    for (let minute = 0; minute < 60; minute += 15) { // 15분 간격
       minutes.push(minute.toString().padStart(2, '0'));
     }
     return minutes;
@@ -698,8 +681,11 @@ const DailyTimeBox = () => {
   const hours = generateHours();
   const minutes = generateMinutes();
 
+  const timeSlots = generateTimeSlots();
+
   const currentTimePosition = getCurrentTimePosition();
 
+  // Don't render until client-side hydration is complete
   if (!isClient) {
     return null;
   }
@@ -772,7 +758,7 @@ const DailyTimeBox = () => {
           </div>
         </div>
 
-        {/* Today's Schedule */}
+        {/* Today's Schedule - Priority Section */}
         <div ref={scheduleRef} className={`${themeClasses.sectionBg} rounded-2xl overflow-hidden border ${themeClasses.border} shadow-lg`}>
           <div className="p-4">
             <div className="flex items-center gap-3 mb-4">
@@ -804,6 +790,7 @@ const DailyTimeBox = () => {
                       className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
                       placeholder=""
                     />
+                    {/* 중간 구분선 */}
                     <div className={`absolute bottom-0 left-0 right-0 h-px ${themeClasses.border} bg-gray-300 dark:bg-gray-600`}></div>
                   </div>
                   <div className="p-1">
@@ -848,10 +835,12 @@ const DailyTimeBox = () => {
                       <div className="text-purple-100 text-xs mt-1 truncate">
                         {value.startTime} - {value.endTime}
                       </div>
+                      {/* Notes Tooltip */}
                       {value.notes && (
                         <div className="absolute left-full ml-2 top-0 bg-gray-800 text-white text-xs p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-20 min-w-48 max-w-64">
                           <div className="font-medium mb-1">Notes:</div>
                           <div className="whitespace-pre-wrap">{value.notes}</div>
+                          {/* Arrow */}
                           <div className="absolute right-full top-2 border-4 border-transparent border-r-gray-800"></div>
                         </div>
                       )}
@@ -872,17 +861,17 @@ const DailyTimeBox = () => {
           </div>
           <div className="space-y-3">
             {priorities.map((priority, index) => (
-              <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.text.trim() ? 'cursor-pointer' : ''}`}>
+              <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.trim() ? 'cursor-pointer' : ''}`}>
                 <span className={`text-lg font-bold bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent mr-3 w-6`}>
                   {index + 1}.
                 </span>
                 <input
                   type="text"
-                  value={priority.text}
+                  value={priority}
                   onChange={(e) => updatePriority(index, e.target.value)}
-                  onClick={() => priority.text.trim() && editTask(priority, 'priority', index)}
+                  onClick={() => priority.trim() && editTask(priority, 'priority', index)}
                   placeholder={`Priority ${index + 1}`}
-                  className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 ${priority.text.trim() ? 'cursor-pointer' : ''}`}
+                  className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 ${priority.trim() ? 'cursor-pointer' : ''}`}
                 />
               </div>
             ))}
@@ -1047,12 +1036,15 @@ const DailyTimeBox = () => {
                       value={newTask.startMinute}
                       onChange={(e) => {
                         let value = e.target.value;
+                        // Handle 3 digits: take last 2 digits
                         if (value.length > 2) {
                           value = value.slice(-2);
                         }
+                        // Pad with leading zero if single digit
                         if (value.length === 1 && parseInt(value) >= 0) {
                           value = value.padStart(2, '0');
                         }
+                        // Ensure it's within 0-59 range
                         const numValue = parseInt(value);
                         if (numValue > 59) {
                           value = '59';
@@ -1116,17 +1108,7 @@ const DailyTimeBox = () => {
                       max="59"
                       value={newTask.endMinute}
                       onChange={(e) => {
-                        let value = e.target.value;
-                        if (value.length > 2) {
-                          value = value.slice(-2);
-                        }
-                        if (value.length === 1 && parseInt(value) >= 0) {
-                          value = value.padStart(2, '0');
-                        }
-                        const numValue = parseInt(value);
-                        if (numValue > 59) {
-                          value = '59';
-                        }
+                        const value = e.target.value.padStart(2, '0');
                         setNewTask({...newTask, endMinute: value});
                       }}
                       placeholder="00"
@@ -1219,38 +1201,6 @@ const DailyTimeBox = () => {
                   {editingTask ? 'Update Task' : 'Save Task'}
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Duplicate Title Warning Popup */}
-      {showDuplicateWarning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`${themeClasses.cardBg} rounded-2xl p-6 w-full max-w-sm border ${themeClasses.border} shadow-2xl`}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-orange-500 rounded-full">
-                <AlertTriangle className="text-white" size={20} />
-              </div>
-              <h3 className={`text-lg font-bold ${themeClasses.text}`}>Duplicate Title</h3>
-            </div>
-            <p className={`${themeClasses.textSecondary} mb-6`}>
-              A task with the title "<span className="font-medium">{duplicateTitle}</span>" already exists. 
-              Do you want to create another task with the same title?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={cancelDuplicateWarning}
-                className={`flex-1 py-2 px-4 rounded-lg border ${themeClasses.border} ${themeClasses.text} hover:bg-gray-100 dark:hover:bg-gray-700 transition-all`}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={proceedWithDuplicateTitle}
-                className="flex-1 py-2 px-4 rounded-lg bg-orange-500 text-white hover:bg-orange-600 transition-all"
-              >
-                Continue
-              </button>
             </div>
           </div>
         </div>
