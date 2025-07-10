@@ -85,7 +85,7 @@ const DailyTimeBox = () => {
     // Auto scroll to current time on initial load
     setTimeout(() => {
       scrollToCurrentTime();
-    }, 500);
+    }, 1000);
   }, []);
 
   // Auto-save when data changes
@@ -115,30 +115,34 @@ const DailyTimeBox = () => {
 
   // Auto scroll to current time after inactivity
   useEffect(() => {
+    if (!isClient || activeTab !== 'today') return;
+  
     const handleScroll = () => {
-      // Clear existing timeout
       if (autoScrollTimeoutRef.current) {
         clearTimeout(autoScrollTimeoutRef.current);
       }
-
-      // Set new timeout for auto scroll
+  
       autoScrollTimeoutRef.current = setTimeout(() => {
         scrollToCurrentTime();
-      }, 3000); // 3 seconds of inactivity
+      }, 3000);
     };
-
+  
     const scrollContainer = scheduleScrollRef.current;
     if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      
-      return () => {
-        scrollContainer.removeEventListener('scroll', handleScroll);
-        if (autoScrollTimeoutRef.current) {
-          clearTimeout(autoScrollTimeoutRef.current);
-        }
-      };
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
     }
-  }, [isClient]);
+  
+    return () => {
+      const scrollContainer = scheduleScrollRef.current;
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', handleScroll);
+      }
+      if (autoScrollTimeoutRef.current) {
+        clearTimeout(autoScrollTimeoutRef.current);
+      }
+    };
+  }, [isClient, activeTab]);
+  
 
   // Clean up timeout on unmount
   useEffect(() => {
