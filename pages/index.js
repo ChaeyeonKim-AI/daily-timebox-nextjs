@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare, Clock, Flag, GripVertical, Menu, Home, BarChart3, Settings } from 'lucide-react';
+import { Download, Plus, X, Moon, Sun, Coffee, BookOpen, Target, Calendar, StickyNote, CheckSquare, Clock, Flag, GripVertical, Menu, Home, Users, Settings } from 'lucide-react';
 const DailyTimeBox = () => {
   const [date, setDate] = useState('');
   const [priorities, setPriorities] = useState(['', '', '']);
@@ -33,7 +33,8 @@ const DailyTimeBox = () => {
   const prioritiesRef = useRef();
   const brainDumpRef = useRef();
   const notesRef = useRef();
-  const scheduleScrollRef = useRef();
+  const scheduleScrollRefMobile = useRef();
+  const scheduleScrollRefDesktop = useRef();
   const autoScrollTimeoutRef = useRef();
   const saveTimeoutRef = useRef();
 
@@ -127,13 +128,17 @@ const DailyTimeBox = () => {
       }, 3000);
     };
   
-    const scrollContainer = scheduleScrollRef.current;
+    const scrollContainer = window.innerWidth < 768
+      ? scheduleScrollRefMobile.current
+      : scheduleScrollRefDesktop.current;
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
     }
   
     return () => {
-      const scrollContainer = scheduleScrollRef.current;
+      const scrollContainer = window.innerWidth < 768
+        ? scheduleScrollRefMobile.current
+        : scheduleScrollRefDesktop.current;
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', handleScroll);
       }
@@ -196,9 +201,13 @@ const DailyTimeBox = () => {
   // Scroll to current time
   const scrollToCurrentTime = () => {
     const currentTimePosition = getCurrentTimePosition();
-    if (!currentTimePosition || !scheduleScrollRef.current) return;
 
-    const scrollContainer = scheduleScrollRef.current;
+    const scrollContainer = window.innerWidth < 768
+      ? scheduleScrollRefMobile.current
+      : scheduleScrollRefDesktop.current;
+    
+    if (!currentTimePosition || !scrollContainer) return;
+
     const timeSlotHeight = 60; // Reduced height for 2-row layout
     const headerHeight = 40; // Height of the table header
     
@@ -219,37 +228,6 @@ const DailyTimeBox = () => {
       behavior: 'smooth',
       block: 'start'
     });
-  };
-
-  // Update priority
-  const updatePriority = (index, value) => {
-    const newPriorities = [...priorities];
-    const oldValue = newPriorities[index];
-    newPriorities[index] = value;
-    
-    // If we're clearing a priority or changing it, make sure Brain Dump is updated
-    if (oldValue && oldValue !== value) {
-      // Find the todo with the old priority text and update it
-      setTodos(todos.map(todo => {
-        if (todo.text === oldValue && value.trim() !== '') {
-          return { ...todo, text: value };
-        }
-        return todo;
-      }));
-      
-      // Update schedule if exists
-      const newSchedule = { ...schedule };
-      Object.keys(newSchedule).forEach(key => {
-        if (typeof newSchedule[key] === 'object' && 
-            newSchedule[key].type === 'timeblock' && 
-            newSchedule[key].title === oldValue) {
-          newSchedule[key].title = value;
-        }
-      });
-      setSchedule(newSchedule);
-    }
-    
-    setPriorities(newPriorities);
   };
 
   // Add todo
@@ -417,35 +395,27 @@ const DailyTimeBox = () => {
         newPriorities[editingTask.index] = newTask.title;
         setPriorities(newPriorities);
       }
-
+    
       // Update priorities if priority is selected for existing task
-      if (newTask.priority > 0 && newTask.priority <= 3) {
-        const newPriorities = [...priorities];
-        const priorityIndex = newTask.priority - 1;
-        
-        // Remove the old priority reference if it exists
-        if (editingTask.type === 'todo') {
-          const oldTaskText = editingTask.text;
-          for (let i = 0; i < newPriorities.length; i++) {
-            if (newPriorities[i] === oldTaskText) {
-              newPriorities[i] = '';
-              break;
-            }
-          }
+      const oldTaskTitle = editingTask.text || editingTask.title;
+      const updatedPriorities = [...priorities];
+
+      // 1. Remove the old task title from all priority slots
+      for (let i = 0; i < updatedPriorities.length; i++) {
+        if (updatedPriorities[i] === oldTaskTitle) {
+          updatedPriorities[i] = '';
         }
-        
-        // Set the new priority
-        newPriorities[priorityIndex] = newTask.title;
-        setPriorities(newPriorities);
-      } else if (editingTask.type === 'todo') {
-        // If no priority is selected, remove from priorities if it was there
-        const oldTaskText = editingTask.text;
-        const newPriorities = priorities.map(priority => 
-          priority === oldTaskText ? '' : priority
-        );
-        setPriorities(newPriorities);
       }
 
+      // 2. Assign the new priority if selected
+      if (newTask.priority >= 1 && newTask.priority <= 3) {
+        updatedPriorities[newTask.priority - 1] = newTask.title;
+      }
+
+      // 3. Save
+      setPriorities(updatedPriorities);
+
+    
       // Update schedule if time is provided
       if (newTask.startHour && newTask.startMinute && newTask.endHour && newTask.endMinute) {
         const startTime = convertTo24Hour(newTask.startHour, newTask.startMinute, newTask.startAmPm);
@@ -462,7 +432,6 @@ const DailyTimeBox = () => {
           }
         }));
       }
-
     } else {
       // Add new task
       // Add to Brain Dump (add to beginning of list, but keep the empty task at the end)
@@ -495,13 +464,10 @@ const DailyTimeBox = () => {
       }
 
       // Add to Priorities if priority is selected
-      if (newTask.priority > 0 && newTask.priority <= 3) {
-        const newPriorities = [...priorities];
-        const priorityIndex = newTask.priority - 1;
-        
-        // Clear the selected priority slot and set the new task
-        newPriorities[priorityIndex] = newTask.title;
-        setPriorities(newPriorities);
+      if (newTask.priority >= 1 && newTask.priority <= 3) {
+        const updatedPriorities = [...priorities];
+        updatedPriorities[newTask.priority - 1] = newTask.title;
+        setPriorities(updatedPriorities);
       }
     }
 
@@ -581,38 +547,25 @@ const DailyTimeBox = () => {
       const [hours, minutes] = timeStr.split(':').map(Number);
       return hours + minutes / 60;
     };
-
-    const startHour = parseTime(startTime);
-    const endHour = parseTime(endTime);
-    
-    // Calculate position from 5:00 AM
-    let startPosition = 0;
-    if (startHour >= 5) {
-      startPosition = startHour - 5;
-    } else if (startHour >= 0 && startHour <= 1) {
-      startPosition = 19 + startHour; // after 23:00
-    }
-
-    let endPosition = 0;
-    if (endHour >= 5) {
-      endPosition = endHour - 5;
-    } else if (endHour >= 0 && endHour <= 1) {
-      endPosition = 19 + endHour;
-    }
-
-    const slotHeight = 60; // Each time slot is 60px
-    const top = startPosition * slotHeight;
-    const height = (endPosition - startPosition) * slotHeight;
-
+  
+    const start = parseTime(startTime);
+    const end = parseTime(endTime);
+  
+    const slotHeightPerHour = 60;     // 전체 1시간당 height
+    const baseOffset = 0;             // 기본적으로 5:00부터 시작이므로 offset 없음
+  
+    const top = (start - 5) * slotHeightPerHour + 10; // <- 여기에 보정값 필요
+    const height = (end - start) * slotHeightPerHour;
+  
     return {
       top: `${top}px`,
-      height: `${Math.max(height, 30)}px`, // Minimum height of 30px
-      left: '60px', // Start after time column
+      height: `${Math.max(height, 30)}px`,
+      left: '60px',
       right: '0px',
       position: 'absolute',
       zIndex: 5
     };
-  };
+  };  
 
   // Update schedule
   const updateSchedule = (time, period, value) => {
@@ -634,13 +587,13 @@ const DailyTimeBox = () => {
   };
 
   const themeClasses = {
-    bg: isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50',
+    bg: isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-teal-50 to-purple-50',
     cardBg: isDarkMode ? 'bg-gray-800' : 'bg-white/90 backdrop-blur-sm',
     text: isDarkMode ? 'text-gray-100' : 'text-gray-800',
     textSecondary: isDarkMode ? 'text-gray-300' : 'text-gray-600',
-    border: isDarkMode ? 'border-gray-600' : 'border-purple-200',
+    border: isDarkMode ? 'border-gray-600' : 'border-gradient-to-br from-teal-50 to-purple-50',
     input: isDarkMode ? 'bg-gray-700 text-gray-100' : 'bg-white/70 text-gray-800',
-    accent: isDarkMode ? 'from-purple-600 to-pink-600' : 'from-purple-500 to-pink-500',
+    accent: isDarkMode ? 'from-purple-600 to-pink-600' : 'from-green-500 to-blue-500',
     sectionBg: isDarkMode ? 'bg-gray-700/50' : 'bg-white/80',
     headerBg: isDarkMode ? 'bg-gray-600' : 'bg-gradient-to-r from-purple-100 to-pink-100'
   };
@@ -702,7 +655,7 @@ const DailyTimeBox = () => {
         {/* Logo */}
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+            <div className="p-2 bg-gradient-to-r from-green-500 to-blue-500 rounded-xl">
               <BookOpen className="text-white" size={20} />
             </div>
             <h1 className={`text-xl font-bold ${themeClasses.text} bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent`}>
@@ -757,11 +710,11 @@ const DailyTimeBox = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="p-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+              className="p-2 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 text-white"
             >
               <Menu size={20} />
             </button>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">Daily Time Box</h1>
+            <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">UniDay</h1>
           </div>
 
           {/* Right: Dark mode toggle + PDF download button */}
@@ -776,7 +729,7 @@ const DailyTimeBox = () => {
             </button>
             <button
               onClick={downloadPDF}
-              className="flex items-center gap-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-2 rounded-lg text-sm"
+              className="flex items-center gap-1 bg-gradient-to-r from-green-500 to-blue-500 text-white px-3 py-2 rounded-lg text-sm"
             >
               <Download size={14} />
               PDF
@@ -816,22 +769,32 @@ const DailyTimeBox = () => {
             {/* Content for each tab */}
             {activeTab === 'today' && (
               <div className="p-4 space-y-6" ref={componentRef}>
-                {/* Auto-save Status */}
-                {/* <div className="flex justify-end">
-                  <div className="flex items-center gap-2 text-xs">
-                    {isSaving ? (
-                      <div className="flex items-center gap-1 text-blue-500">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span>Saving...</span>
-                      </div>
-                    ) : lastSaved ? (
-                      <div className="flex items-center gap-1 text-green-500">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span>Saved {lastSaved.toLocaleTimeString()}</span>
-                      </div>
-                    ) : null}
+
+                {/* Daily Priorities */}
+                <div ref={prioritiesRef} className={`${themeClasses.sectionBg} rounded-2xl p-4 border ${themeClasses.border} shadow-lg`}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <Target className="text-purple-500" size={24} />
+                    <h2 className={`text-xl font-bold ${themeClasses.text}`}>Daily Priorities</h2>
                   </div>
-                </div> */}
+                  <div className="space-y-3">
+                    {priorities.map((priority, index) => (
+                      <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.trim() ? 'cursor-pointer' : ''}`}>
+                        <span className={`text-lg font-bold bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent mr-3 w-6`}>
+                          {index + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={priority}
+                          readOnly
+                          onClick={() => priority.trim() && editTask(priority, 'priority', index)}
+                          placeholder={`Priority ${index + 1}`}
+                          className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 cursor-pointer`}
+                          title="Click to edit this priority task"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Today's Schedule - Priority Section */}
                 <div ref={scheduleRef} className={`${themeClasses.sectionBg} rounded-2xl overflow-hidden border ${themeClasses.border} shadow-lg`}>
@@ -851,7 +814,7 @@ const DailyTimeBox = () => {
                     </div>
 
                     {/* Time Slots */}
-                    <div className="max-h-80 overflow-y-auto overflow-x-hidden relative" ref={scheduleScrollRef}>
+                    <div className="max-h-80 overflow-y-auto overflow-x-hidden relative" ref={scheduleScrollRefMobile}>
                       {scheduleTimeSlots.map((time, index) => (
                         <div key={`${time}-${index}`} className={`grid border-b ${themeClasses.border} last:border-b-0 hover:bg-purple-50 dark:hover:bg-gray-700 transition-all relative`} style={{gridTemplateColumns: '60px 1fr', gridTemplateRows: '30px 30px'}}>
                           <div className={`row-span-2 p-1 font-bold text-center border-r ${themeClasses.border} flex items-center justify-center ${themeClasses.headerBg} ${themeClasses.text} text-sm`}>
@@ -861,8 +824,8 @@ const DailyTimeBox = () => {
                             <input
                               type="text"
                               value={schedule[`${time}-${index}-00`] || ''}
-                              onChange={(e) => updateSchedule(time, `${index}-00`, e.target.value)}
-                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
+                              readOnly
+                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded cursor-default`}
                               placeholder=""
                             />
                             {/* 중간 구분선 */}
@@ -872,8 +835,8 @@ const DailyTimeBox = () => {
                             <input
                               type="text"
                               value={schedule[`${time}-${index}-30`] || ''}
-                              onChange={(e) => updateSchedule(time, `${index}-30`, e.target.value)}
-                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
+                              readOnly
+                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded cursor-default`}
                               placeholder=""
                             />
                           </div>
@@ -925,31 +888,6 @@ const DailyTimeBox = () => {
                         return null;
                       })}
                     </div>
-                  </div>
-                </div>
-
-                {/* Daily Priorities */}
-                <div ref={prioritiesRef} className={`${themeClasses.sectionBg} rounded-2xl p-4 border ${themeClasses.border} shadow-lg`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <Target className="text-purple-500" size={24} />
-                    <h2 className={`text-xl font-bold ${themeClasses.text}`}>Daily Priorities</h2>
-                  </div>
-                  <div className="space-y-3">
-                    {priorities.map((priority, index) => (
-                      <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.trim() ? 'cursor-pointer' : ''}`}>
-                        <span className={`text-lg font-bold bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent mr-3 w-6`}>
-                          {index + 1}.
-                        </span>
-                        <input
-                          type="text"
-                          value={priority}
-                          onChange={(e) => updatePriority(index, e.target.value)}
-                          onClick={() => priority.trim() && editTask(priority, 'priority', index)}
-                          placeholder={`Priority ${index + 1}`}
-                          className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 ${priority.trim() ? 'cursor-pointer' : ''}`}
-                        />
-                      </div>
-                    ))}
                   </div>
                 </div>
 
@@ -1044,7 +982,7 @@ const DailyTimeBox = () => {
                 📅 Calendar is under construction.
               </div>
             )}
-            {activeTab === 'insights' && (
+            {activeTab === 'share' && (
               <div className="p-4 text-gray-500 text-center">
                 📊 Insights are coming soon.
               </div>
@@ -1074,8 +1012,33 @@ const DailyTimeBox = () => {
                     ) : null}
                   </div>
                 </div> */}
+                
+                {/* Daily Priorities */}
+                <div ref={prioritiesRef} className={`${themeClasses.sectionBg} rounded-2xl p-4 border ${themeClasses.border} shadow-lg`}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <Target className="text-purple-500" size={24} />
+                    <h2 className={`text-xl font-bold ${themeClasses.text}`}>Daily Priorities</h2>
+                  </div>
+                  <div className="space-y-3">
+                    {priorities.map((priority, index) => (
+                      <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.trim() ? 'cursor-pointer' : ''}`}>
+                        <span className={`text-lg font-bold bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent mr-3 w-6`}>
+                          {index + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={priority}
+                          onChange={(e) => updatePriority(index, e.target.value)}
+                          onClick={() => priority.trim() && editTask(priority, 'priority', index)}
+                          placeholder={`Priority ${index + 1}`}
+                          className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 ${priority.trim() ? 'cursor-pointer' : ''}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-                {/* Today's Schedule - Priority Section */}
+                {/* Today's Schedule */}
                 <div ref={scheduleRef} className={`${themeClasses.sectionBg} rounded-2xl overflow-hidden border ${themeClasses.border} shadow-lg`}>
                   <div className="p-4">
                     <div className="flex items-center gap-3 mb-4">
@@ -1093,7 +1056,7 @@ const DailyTimeBox = () => {
                     </div>
 
                     {/* Time Slots */}
-                    <div className="max-h-80 overflow-y-auto overflow-x-hidden relative" ref={scheduleScrollRef}>
+                    <div className="max-h-80 overflow-y-auto overflow-x-hidden relative" ref={scheduleScrollRefDesktop}>
                       {scheduleTimeSlots.map((time, index) => (
                         <div key={`${time}-${index}`} className={`grid border-b ${themeClasses.border} last:border-b-0 hover:bg-purple-50 dark:hover:bg-gray-700 transition-all relative`} style={{gridTemplateColumns: '60px 1fr', gridTemplateRows: '30px 30px'}}>
                           <div className={`row-span-2 p-1 font-bold text-center border-r ${themeClasses.border} flex items-center justify-center ${themeClasses.headerBg} ${themeClasses.text} text-sm`}>
@@ -1103,8 +1066,8 @@ const DailyTimeBox = () => {
                             <input
                               type="text"
                               value={schedule[`${time}-${index}-00`] || ''}
-                              onChange={(e) => updateSchedule(time, `${index}-00`, e.target.value)}
-                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
+                              readOnly
+                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded cursor-default`}
                               placeholder=""
                             />
                             {/* 중간 구분선 */}
@@ -1114,8 +1077,8 @@ const DailyTimeBox = () => {
                             <input
                               type="text"
                               value={schedule[`${time}-${index}-30`] || ''}
-                              onChange={(e) => updateSchedule(time, `${index}-30`, e.target.value)}
-                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded focus:bg-purple-50 dark:focus:bg-gray-700 transition-all`}
+                              readOnly
+                              className={`w-full bg-transparent border-none outline-none text-xs ${themeClasses.text} p-1 rounded cursor-default`}
                               placeholder=""
                             />
                           </div>
@@ -1167,31 +1130,6 @@ const DailyTimeBox = () => {
                         return null;
                       })}
                     </div>
-                  </div>
-                </div>
-
-                {/* Daily Priorities */}
-                <div ref={prioritiesRef} className={`${themeClasses.sectionBg} rounded-2xl p-4 border ${themeClasses.border} shadow-lg`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <Target className="text-purple-500" size={24} />
-                    <h2 className={`text-xl font-bold ${themeClasses.text}`}>Daily Priorities</h2>
-                  </div>
-                  <div className="space-y-3">
-                    {priorities.map((priority, index) => (
-                      <div key={index} className={`flex items-center p-3 rounded-xl ${themeClasses.input} border ${themeClasses.border} ${priority.trim() ? 'cursor-pointer' : ''}`}>
-                        <span className={`text-lg font-bold bg-gradient-to-r ${themeClasses.accent} bg-clip-text text-transparent mr-3 w-6`}>
-                          {index + 1}.
-                        </span>
-                        <input
-                          type="text"
-                          value={priority}
-                          onChange={(e) => updatePriority(index, e.target.value)}
-                          onClick={() => priority.trim() && editTask(priority, 'priority', index)}
-                          placeholder={`Priority ${index + 1}`}
-                          className={`flex-1 bg-transparent border-none outline-none ${themeClasses.text} placeholder-gray-400 ${priority.trim() ? 'cursor-pointer' : ''}`}
-                        />
-                      </div>
-                    ))}
                   </div>
                 </div>
 
@@ -1286,34 +1224,34 @@ const DailyTimeBox = () => {
           <button
             onClick={() => setActiveTab('today')}
             className={`flex flex-col items-center text-xs ${
-              activeTab === 'today' ? 'text-purple-600' : 'text-gray-500'
+              activeTab === 'today' ? 'teal-600' : 'text-gray-500'
             }`}
           >
             <Home size={20} />
             Today
           </button>
           <button
-            onClick={() => setActiveTab('calendar')}
+            onClick={() => setActiveTab('Calendar')}
             className={`flex flex-col items-center text-xs ${
-              activeTab === 'calendar' ? 'text-purple-600' : 'text-gray-500'
+              activeTab === 'calendar' ? 'emerald-600' : 'text-gray-500'
             }`}
           >
             <Calendar size={20} />
             Calendar
           </button>
           <button
-            onClick={() => setActiveTab('insights')}
+            onClick={() => setActiveTab('Share')}
             className={`flex flex-col items-center text-xs ${
-              activeTab === 'insights' ? 'text-purple-600' : 'text-gray-500'
+              activeTab === 'insights' ? 'emerald-600' : 'text-gray-500'
             }`}
           >
-            <BarChart3 size={20} />
-            Insights
+            <Users size={20} />
+            Share
           </button>
           <button
             onClick={() => setActiveTab('settings')}
             className={`flex flex-col items-center text-xs ${
-              activeTab === 'settings' ? 'text-purple-600' : 'text-gray-500'
+              activeTab === 'settings' ? 'emerald-600' : 'text-gray-500'
             }`}
           >
             <Settings size={20} />
